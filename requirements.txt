@@ -1,0 +1,10 @@
+streamlit
+transformers
+torch
+torchvision
+pillow
+pandas
+plotly
+librosa
+soundfile
+accelerate
