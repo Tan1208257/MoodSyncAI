@@ -17,70 +17,173 @@ from fusion import (
 
 st.set_page_config(
     page_title="MoodSyncAI",
-    page_icon="🧠",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("🧠 MoodSyncAI")
+# ---------------- CUSTOM CSS ----------------
+st.markdown(
+    """
+    <style>
+    .main {
+        background-color: #0f172a;
+        color: white;
+    }
 
-st.write(
-    "Multi-modal emotion and sentiment analyser using image, text, audio, and webcam input."
+    .stApp {
+        background: linear-gradient(to bottom right, #0f172a, #1e293b);
+    }
+
+    h1, h2, h3 {
+        color: #f8fafc;
+    }
+
+    .glass-box {
+        background: rgba(255,255,255,0.08);
+        padding: 20px;
+        border-radius: 20px;
+        backdrop-filter: blur(10px);
+        margin-bottom: 20px;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .metric-card {
+        background: rgba(255,255,255,0.08);
+        padding: 15px;
+        border-radius: 15px;
+        text-align: center;
+    }
+
+    .big-font {
+        font-size: 20px;
+        font-weight: bold;
+    }
+
+    .small-font {
+        color: #cbd5e1;
+    }
+
+    .stButton>button {
+        background: linear-gradient(to right, #3b82f6, #8b5cf6);
+        color: white;
+        border-radius: 12px;
+        border: none;
+        height: 50px;
+        width: 100%;
+        font-size: 18px;
+        font-weight: bold;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
+# ---------------- HEADER ----------------
+st.markdown(
+    """
+    <div class="glass-box">
+        <h1>MoodSyncAI</h1>
+        <p class="small-font">
+        Multi-Modal Emotion & Sentiment Analysis using Image, Audio, Text and Webcam.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("⚙️ Settings")
+
+# st.sidebar.info(
+#     "This application analyses emotions using multiple modalities."
+# )
+
+input_mode = st.sidebar.radio(
+    "Choose Input Mode",
+    ["Upload Image", "Use Webcam"]
+)
+
+show_charts = st.sidebar.checkbox(
+    "Show Confidence Charts",
+    value=True
+)
+
+show_timeline = st.sidebar.checkbox(
+    "Show Webcam Timeline",
+    value=True
+)
+
+# ---------------- LOAD MODELS ----------------
 image_model, text_model, whisper_model = load_models()
 
 if "emotion_timeline" not in st.session_state:
     st.session_state.emotion_timeline = []
 
-input_mode = st.radio(
-    "Choose image input mode",
-    ["Upload Image", "Use Webcam"]
-)
+# ---------------- INPUT SECTION ----------------
+st.subheader("Input Section")
+
+col1, col2 = st.columns(2)
 
 uploaded_image = None
 webcam_image = None
 
-if input_mode == "Upload Image":
-    uploaded_image = st.file_uploader(
-        "Upload face image",
-        type=["jpg", "jpeg", "png"]
+with col1:
+
+    st.markdown("### Face Input")
+
+    if input_mode == "Upload Image":
+
+        uploaded_image = st.file_uploader(
+            "Upload a face image",
+            type=["jpg", "jpeg", "png"]
+        )
+
+    else:
+
+        webcam_image = st.camera_input(
+            "Capture image from webcam"
+        )
+
+with col2:
+
+    st.markdown("### Audio & Text")
+
+    uploaded_audio = st.file_uploader(
+        "Upload audio clip (optional)",
+        type=["wav", "mp3", "m4a"]
     )
 
-else:
-    webcam_image = st.camera_input(
-        "Capture face from webcam"
+    user_text = st.text_area(
+        "Enter spoken sentence",
+        placeholder="Example: No, everything is perfectly fine."
     )
 
-uploaded_audio = st.file_uploader(
-    "Upload audio clip (optional)",
-    type=["wav", "mp3", "m4a"]
-)
-
-user_text = st.text_area(
-    "Enter text"
-)
-
+# ---------------- ANALYSIS BUTTON ----------------
 if st.button("Analyse Emotion"):
 
     image_source = uploaded_image if input_mode == "Upload Image" else webcam_image
 
     if image_source is None:
-        st.error("Please upload an image or capture from webcam.")
+        st.error("Please upload or capture an image.")
 
     elif user_text.strip() == "" and uploaded_audio is None:
         st.error("Please enter text or upload audio.")
 
     else:
+
         image = Image.open(image_source).convert("RGB")
 
-        st.image(image, width=300)
+        st.subheader("Captured Face")
+        st.image(image, width=350)
 
+        # IMAGE ANALYSIS
         image_predictions, image_emotion, image_score = analyse_image(
             image_model,
             image
         )
 
         if input_mode == "Use Webcam":
+
             st.session_state.emotion_timeline.append(
                 {
                     "frame": len(st.session_state.emotion_timeline) + 1,
@@ -89,6 +192,7 @@ if st.button("Analyse Emotion"):
                 }
             )
 
+        # AUDIO + TEXT
         final_text = user_text.strip()
         audio_transcript = ""
 
@@ -96,23 +200,27 @@ if st.button("Analyse Emotion"):
 
             st.audio(uploaded_audio)
 
-            audio_transcript = transcribe_audio(
-                whisper_model,
-                uploaded_audio
-            )
+            with st.spinner("Transcribing audio..."):
 
-            st.info(f"Audio Transcript: {audio_transcript}")
+                audio_transcript = transcribe_audio(
+                    whisper_model,
+                    uploaded_audio
+                )
+
+            st.success(f"Transcript: {audio_transcript}")
 
             if final_text == "":
                 final_text = audio_transcript
             else:
                 final_text = final_text + " " + audio_transcript
 
+        # TEXT SENTIMENT
         text_predictions, text_sentiment, text_score = analyse_text(
             text_model,
             final_text
         )
 
+        # AUDIO SENTIMENT
         audio_sentiment = "not provided"
         audio_score = 0.0
         audio_predictions = None
@@ -124,6 +232,7 @@ if st.button("Analyse Emotion"):
                 audio_transcript
             )
 
+        # FUSION
         fusion_result = fusion_logic(
             image_emotion=image_emotion,
             image_score=image_score,
@@ -133,85 +242,99 @@ if st.button("Analyse Emotion"):
             audio_score=audio_score
         )
 
-        st.divider()
+        # ---------------- RESULTS ----------------
+        st.subheader("📊 Analysis Results")
 
-        col1, col2, col3, col4 = st.columns(4)
+        m1, m2, m3, m4 = st.columns(4)
 
-        with col1:
+        with m1:
             st.metric(
                 "Visual Emotion",
                 image_emotion,
                 f"{round(image_score * 100, 2)}%"
             )
 
-        with col2:
+        with m2:
             st.metric(
                 "Text Sentiment",
                 text_sentiment.capitalize(),
                 f"{round(text_score * 100, 2)}%"
             )
 
-        with col3:
+        with m3:
+
             if audio_transcript.strip() != "":
+
                 st.metric(
                     "Audio Sentiment",
                     audio_sentiment.capitalize(),
                     f"{round(audio_score * 100, 2)}%"
                 )
+
             else:
+
                 st.metric(
                     "Audio Sentiment",
                     "Not Provided",
                     "Optional"
                 )
 
-        with col4:
+        with m4:
             st.metric(
                 "Fusion Result",
                 fusion_result["badge"],
                 f'{fusion_result["confidence"]}%'
             )
 
-        st.divider()
+        # ---------------- CHARTS ----------------
+        if show_charts:
 
-        st.plotly_chart(
-            create_bar_chart(
-                image_predictions,
-                "Visual Emotion Confidence"
-            ),
-            use_container_width=True
-        )
+            st.subheader("📈 Confidence Visualisations")
 
-        st.plotly_chart(
-            create_bar_chart(
-                text_predictions,
-                "Text Sentiment Confidence"
-            ),
-            use_container_width=True
-        )
-
-        if audio_predictions is not None:
             st.plotly_chart(
                 create_bar_chart(
-                    audio_predictions,
-                    "Audio Sentiment Confidence"
+                    image_predictions,
+                    "Visual Emotion Confidence"
                 ),
                 use_container_width=True
             )
 
-        if input_mode == "Use Webcam" and len(st.session_state.emotion_timeline) > 0:
-            st.subheader("Webcam Emotion Timeline")
-
             st.plotly_chart(
-                create_timeline_chart(st.session_state.emotion_timeline),
+                create_bar_chart(
+                    text_predictions,
+                    "Text Sentiment Confidence"
+                ),
                 use_container_width=True
             )
 
-            if st.button("Clear Webcam Timeline"):
-                st.session_state.emotion_timeline = []
-                st.rerun()
+            if audio_predictions is not None:
 
-        st.divider()
+                st.plotly_chart(
+                    create_bar_chart(
+                        audio_predictions,
+                        "Audio Sentiment Confidence"
+                    ),
+                    use_container_width=True
+                )
+
+        # ---------------- TIMELINE ----------------
+        if (
+            input_mode == "Use Webcam"
+            and len(st.session_state.emotion_timeline) > 0
+            and show_timeline
+        ):
+
+            st.subheader("🎥 Webcam Emotion Timeline")
+
+            st.plotly_chart(
+                create_timeline_chart(
+                    st.session_state.emotion_timeline
+                ),
+                use_container_width=True
+            )
+
+        # ---------------- SUMMARY ----------------
+        st.subheader("📝 Generative Summary")
 
         summary = generate_summary(
             image_emotion=image_emotion,
@@ -222,5 +345,12 @@ if st.button("Analyse Emotion"):
             audio_used=audio_transcript.strip() != ""
         )
 
-        st.subheader("Generative Summary")
         st.success(summary)
+
+        # ---------------- FOOTER ----------------
+st.markdown("---")
+
+st.markdown(
+    unsafe_allow_html=True
+)
+
